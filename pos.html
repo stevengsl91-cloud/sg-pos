@@ -1,0 +1,2194 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SG Aquatic Trading - POS & Inventory System</title>
+  
+  <!-- PWA & Mobile WebApp Meta Tags -->
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SG POS" />
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2972/2972531.png" />
+
+  <!-- External CDNs -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #printable-receipt, #printable-receipt * {
+        visibility: visible !important;
+        display: block !important;
+      }
+      #printable-receipt {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 80mm !important;
+        margin: 0 !important;
+        padding: 10px !important;
+        background: #fff !important;
+        color: #000 !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 12px !important;
+      }
+      #printable-receipt .flex-row-item {
+        display: flex !important;
+        justify-content: space-between !important;
+      }
+      @page {
+        size: 80mm auto;
+        margin: 0;
+      }
+    }
+  </style>
+
+  <!-- PWA Service Worker Registration Script -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('PWA Service Worker Registered Successfully:', reg.scope))
+          .catch(err => console.error('PWA Service Worker Registration Failed:', err));
+      });
+    }
+  </script>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800 select-none">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const USERS = [
+      { name: "SG", username: "SG", pin: "555121", role: "Owner" },
+      { name: "Staff", username: "Staff", pin: "112233", role: "Staff" }
+    ];
+
+    const COMPANY_INFO = {
+      name: "SG Aquatic Trading",
+      regNo: "CT0164023-T",
+      address: "42 Jalan Permai 1D/KS9, Taman Kota Pendamar 42000 Pelabuhan Klang",
+      contact: "011-11442688"
+    };
+
+    const I18N = {
+      bm: {
+        navSales: "Rekod Jualan",
+        navInventory: "Stok Kolam Udang",
+        navReports: "Laporan & Analisis",
+        sysOverview: "Gambaran Keseluruhan Sistem",
+        byDay: "Harian",
+        byMonth: "Bulanan",
+        byRange: "Julat Tarikh",
+        toWord: "hingga",
+        resetToday: "Sifar Hari Ini",
+        genScreenshot: "Jana Laporan Gambar",
+        btnBackup: "Backup DB",
+        btnRestore: "Restore DB",
+        
+        recordTime: "Masa Rekod",
+        btnNowTime: "Masa Sekarang",
+
+        addCustomer: "1. Daftar Pemancing Baru",
+        custName: "Nama Pemancing",
+        custPhone: "Nombor Telefon",
+        startTime: "Masa Mula",
+        fishingFee: "Yuran Memancing (RM)",
+        fbCost: "🍔 Makanan & Minuman",
+        baitCost: "🪱 Umpan",
+        discountLabel: "🏷️ Diskaun / Potongan",
+        btnStart: "Mula Memancing",
+        salesRecordTitle: "Rekod Jualan Pemancing",
+        totalCount: "Jumlah Rekod",
+        thInfo: "Maklumat Pemancing",
+        thTime: "⏱️ Masa",
+        thBait: "🪱 Umpan",
+        thFB: "🍔 F&B",
+        thCatch: "🎣 Tangkapan",
+        thTotalStatus: "Jumlah / Status",
+        statusFishing: "Sedang Memancing",
+        statusPaid: "Selesai",
+        btnCheckout: "Bayar & Tolak Udang",
+        prawnWeightCatch: "Berat Udang Tangkapan (Gram)",
+        deductPool: "Tolak Dari Kolam",
+        checkoutTitle: "Penyelesaian & Potongan Udang",
+
+        realtimeStock: "Stok Semasa",
+        deadPrawn: "☠️ Udang Mati",
+        lostRecord: "❓ Rekod Hilang",
+        supplierInTitle: "🚚 1. Masuk Udang (Pembekal)",
+        targetPool: "Kolam Sasaran",
+        weightGram: "Berat (Gram)",
+        btnAddStock: "+ Sahkan Masuk Udang",
+        transferTitle: "⇄ 2. Pindah Kolam",
+        fromPool: "Dari (From)",
+        toPool: "Ke (To)",
+        btnTransfer: "⇄ Sahkan Pindahan",
+        deadPrawnTitle: "☠️ 3. Udang Mati",
+        sourcePool: "Dari Kolam",
+        btnRecordDead: "- Sahkan Udang Mati",
+        lostTitle: "❓ 4. Rekod Hilang",
+        btnRecordLost: "- Sahkan Rekod Hilang",
+        inventoryLogsTitle: "Butiran Pergerakan Udang",
+        btnExportExcel: "Eksport ke Excel",
+
+        typeSupplier: "Stock In",
+        typeTransfer: "Pindah",
+        typeDead: "Udang Mati",
+        typeLost: "Rekod Hilang",
+        typeCatch: "Tangkapan",
+
+        reportsTitle: "📊 Laporan & Analisis Data",
+        showingText: "Paparan Semasa",
+        dayData: "Data Harian",
+        monthData: "Data Bulanan",
+        rangeData: "Data Julat Tarikh",
+        totalRevenue: "Jumlah Hasil (Revenue)",
+        totalSupplierIn: "Jumlah Udang Masuk",
+        totalCatch: "Jumlah Tangkapan Pemancing",
+        totalLoss: "Jumlah Kerugian (Dead + Lost)",
+        lossBreakdown: "☠️ Pecahan Kerugian",
+        customerStats: "👥 Statistik Pemancing & Perkhidmatan",
+        customerSessions: "Bilangan Pemancing",
+        extraIncome: "Hasil Tambahan (F&B + Umpan + Lebih Berat)",
+        totalDiscountsGiven: "Jumlah Diskaun Diberi",
+
+        btnCancel: "Batal",
+        btnSaveCheckout: "Simpan & Selesai",
+        btnEdit: "Kemas Kini",
+        btnDelete: "Padam",
+
+        passTitle: "Sahkan Kata Laluan Owner",
+        passDesc: "Akses ini memerlukan kata laluan Owner (SG):",
+        passError: "Kata laluan salah atau tiada kebenaran!",
+
+        editSalesTitle: "Edit Rekod Jualan",
+        editLogTitle: "Edit Rekod Stok",
+
+        confirmModalTitle: "Pengesahan Tindakan Data",
+        confirmModalDesc: "Adakah anda pasti mahu menyimpan / merekodkan tindakan ini?",
+        btnYesConfirm: "Ya, Sahkan Tindakan",
+        btnNoCancel: "Batal & Jangan Simpan",
+
+        dailySummaryTitle: "Ringkasan Penutup Harian",
+        monthlySummaryTitle: "Ringkasan Penutup Bulanan",
+        rangeSummaryTitle: "Ringkasan Julat Tarikh",
+        salesSummarySection: "💰 RINGKASAN JUALAN",
+        prawnSummarySection: "🦐 PERGERAKAN STOK UDANG",
+        currentPoolStockSection: "🏊 STOK SEMASA SETIAP KOLAM (REAL-TIME)",
+        btnSaveExit: "Simpan & Keluar",
+        saving: "Menyimpan...",
+        generatedTag: "SG Aquatic Trading POS • Kad Ringkasan Auto",
+        btnPrintReceipt: "Cetak Resit",
+        overweightCost: "Caj Lebih Berat (RM 0.07/g)",
+        calcTotalPaid: "Jumlah Bayaran Selepas Kiraan",
+        overweightLabel: "Lebih Berat",
+        withinQuotaLabel: "Dalam Kelayakan Percuma"
+      },
+      en: {
+        navSales: "Sales Records",
+        navInventory: "Prawn Inventory",
+        navReports: "Reports & Analysis",
+        sysOverview: "System Data Overview",
+        byDay: "Daily",
+        byMonth: "Monthly",
+        byRange: "Custom Range",
+        toWord: "to",
+        resetToday: "Reset Today",
+        genScreenshot: "Generate Report Image",
+        btnBackup: "Backup DB",
+        btnRestore: "Restore DB",
+
+        recordTime: "Record Time",
+        btnNowTime: "Current Time",
+
+        addCustomer: "1. Add New Angler",
+        custName: "Angler Name",
+        custPhone: "Phone Number",
+        startTime: "Start Time",
+        fishingFee: "Fishing Fee (RM)",
+        fbCost: "🍔 F&B Amount",
+        baitCost: "🪱 Bait Cost",
+        discountLabel: "🏷️ Discount",
+        btnStart: "Start Fishing Session",
+        salesRecordTitle: "Angler Sales Records",
+        totalCount: "Total Records",
+        thInfo: "Angler Info",
+        thTime: "⏱️ Time",
+        thBait: "🪱 Bait",
+        thFB: "🍔 F&B",
+        thCatch: "🎣 Catch",
+        thTotalStatus: "Total / Status",
+        statusFishing: "Fishing",
+        statusPaid: "Paid",
+        btnCheckout: "Checkout & Deduct",
+        prawnWeightCatch: "Catch Weight (Gram)",
+        deductPool: "Deduct From Pool",
+        checkoutTitle: "Checkout & Deduct Prawn",
+
+        realtimeStock: "Real-time Stock",
+        deadPrawn: "☠️ Dead Loss",
+        lostRecord: "❓ Unaccounted Lost",
+        supplierInTitle: "🚚 1. Supplier Stock In",
+        targetPool: "Target Pool",
+        weightGram: "Weight (Gram)",
+        btnAddStock: "+ Confirm Stock In",
+        transferTitle: "⇄ 2. Pool Transfer",
+        fromPool: "From",
+        toPool: "To",
+        btnTransfer: "⇄ Confirm Transfer",
+        deadPrawnTitle: "☠️ 3. Dead Prawn Record",
+        sourcePool: "Source Pool",
+        btnRecordDead: "- Confirm Dead Loss",
+        lostTitle: "❓ 4. Lost Record",
+        btnRecordLost: "- Confirm Lost Record",
+        inventoryLogsTitle: "Inventory Movement Details",
+        btnExportExcel: "Export to Excel",
+
+        typeSupplier: "Supplier In",
+        typeTransfer: "Transfer",
+        typeDead: "Dead Loss",
+        typeLost: "Lost Record",
+        typeCatch: "Catch",
+
+        reportsTitle: "📊 Reports & Analytics",
+        showingText: "Currently Showing",
+        dayData: "Daily Data",
+        monthData: "Monthly Data",
+        rangeData: "Date Range Data",
+        totalRevenue: "Total Revenue",
+        totalSupplierIn: "Total Supplier Stock In",
+        totalCatch: "Total Customer Catches",
+        totalLoss: "Total Loss (Dead + Lost)",
+        lossBreakdown: "☠️ Loss Breakdown",
+        customerStats: "👥 Customer & Service Statistics",
+        customerSessions: "Angler Sessions",
+        extraIncome: "F&B, Bait & Extra Weight Revenue",
+        totalDiscountsGiven: "Total Discounts Given",
+
+        btnCancel: "Cancel",
+        btnSaveCheckout: "Save & Complete",
+        btnEdit: "Edit",
+        btnDelete: "Delete",
+
+        passTitle: "Verify Owner Password",
+        passDesc: "This action requires Owner (SG) password:",
+        passError: "Incorrect Password or Unauthorized!",
+
+        editSalesTitle: "Edit Sales Record",
+        editLogTitle: "Edit Inventory Log",
+
+        confirmModalTitle: "Confirm Data Action",
+        confirmModalDesc: "Are you sure you want to save or submit this action?",
+        btnYesConfirm: "Yes, Confirm Action",
+        btnNoCancel: "No, Cancel",
+
+        dailySummaryTitle: "Daily Closing Summary",
+        monthlySummaryTitle: "Monthly Closing Summary",
+        rangeSummaryTitle: "Date Range Summary",
+        salesSummarySection: "💰 SALES SUMMARY",
+        prawnSummarySection: "🦐 PRAWN INVENTORY FLOW",
+        currentPoolStockSection: "🏊 REAL-TIME POOL STOCK",
+        btnSaveExit: "Save & Exit",
+        saving: "Saving...",
+        generatedTag: "SG Aquatic Trading POS • Auto Generated Summary Card",
+        btnPrintReceipt: "Print Receipt",
+        overweightCost: "Overweight Charge (RM 0.07/g)",
+        calcTotalPaid: "Calculated Total Paid",
+        overweightLabel: "Overweight",
+        withinQuotaLabel: "Within Free Quota"
+      },
+      zh: {
+        navSales: "销售记录",
+        navInventory: "虾池库存",
+        navReports: "报表与分析",
+        sysOverview: "系统数据总览",
+        byDay: "按日",
+        byMonth: "按月",
+        byRange: "自定义范围",
+        toWord: "至",
+        resetToday: "重置今日",
+        genScreenshot: "生成总结截图",
+        btnBackup: "备份数据库",
+        btnRestore: "还原数据库",
+
+        recordTime: "记录时间",
+        btnNowTime: "当下时间",
+
+        addCustomer: "1. 新增钓友开台",
+        custName: "钓友姓名",
+        custPhone: "电话号码",
+        startTime: "钓友开台时间",
+        fishingFee: "钓虾费用 (RM)",
+        fbCost: "🍔 餐饮 (F&B)",
+        baitCost: "🪱 虾饵 (Bait)",
+        discountLabel: "🏷️ 折扣 (Discount RM/%)",
+        btnStart: "开始钓鱼/钓虾",
+        salesRecordTitle: "钓友消费记录",
+        totalCount: "共条数",
+        thInfo: "钓友信息",
+        thTime: "⏱️ 钓友时间",
+        thBait: "🪱 虾饵",
+        thFB: "🍔 餐饮",
+        thCatch: "🎣 钓获",
+        thTotalStatus: "总额 / 状态",
+        statusFishing: "钓鱼中",
+        statusPaid: "已结账",
+        btnCheckout: "结账 & 扣虾",
+        prawnWeightCatch: "钓获虾重 (Gram / 克)",
+        deductPool: "扣虾池塘",
+        checkoutTitle: "结账与扣虾结算",
+
+        realtimeStock: "实时存量",
+        deadPrawn: "☠️ 死虾损耗",
+        lostRecord: "❓ 失误损耗",
+        supplierInTitle: "🚚 1. 进虾 (Supplier In)",
+        targetPool: "目标池塘",
+        weightGram: "重量 (Gram / 克)",
+        btnAddStock: "+ 确认进虾",
+        transferTitle: "⇄ 2. 转移 (Pool Transfer)",
+        fromPool: "从 (From)",
+        toPool: "到 (To)",
+        btnTransfer: "⇄ 确认转移",
+        deadPrawnTitle: "☠️ 3. 死虾记录",
+        sourcePool: "源池塘",
+        btnRecordDead: "- 确认记死虾",
+        lostTitle: "❓ 4. 失误记录",
+        btnRecordLost: "- 确认记失误",
+        inventoryLogsTitle: "虾池流动变动明细",
+        btnExportExcel: "导出 Excel 报表",
+
+        typeSupplier: "进虾",
+        typeTransfer: "池塘转移",
+        typeDead: "Udang Mati",
+        typeLost: "Rekod Hilang",
+        typeCatch: "顾客钓走",
+
+        reportsTitle: "📊 报表与历史数据分析",
+        showingText: "当前显示",
+        dayData: "当天数据",
+        monthData: "当月数据",
+        rangeData: "指定区间数据",
+        totalRevenue: "营业总额 (Revenue)",
+        totalSupplierIn: "进虾总量 (Supplier In)",
+        totalCatch: "钓客钓走总重 (Catches)",
+        totalLoss: "总损耗 (Dead + Lost)",
+        lossBreakdown: "☠️ 损耗分类明细",
+        customerStats: "👥 钓友接待与消费构成",
+        customerSessions: "接待钓无人次",
+        extraIncome: "餐饮、虾饵与超重附加收入",
+        totalDiscountsGiven: "让利优惠总额 (Discounts)",
+
+        btnCancel: "取消",
+        btnSaveCheckout: "保存并完成",
+        btnEdit: "修改",
+        btnDelete: "删除",
+
+        passTitle: "老板 (Owner) 身份校验",
+        passDesc: "此敏感操作需要 Owner (SG) 授权密码：",
+        passError: "密码错误或权限不足！",
+
+        editSalesTitle: "编辑销售记录",
+        editLogTitle: "编辑库存流动记录",
+
+        confirmModalTitle: "确认提交此操作？",
+        confirmModalDesc: "您确定要保存、修改或删除该笔数据吗？",
+        btnYesConfirm: "确认执行",
+        btnNoCancel: "取消",
+
+        dailySummaryTitle: "每日结业总结",
+        monthlySummaryTitle: "月度结业总结",
+        rangeSummaryTitle: "指定区间结业总结",
+        salesSummarySection: "💰 营业额总结 (Sales Record)",
+        prawnSummarySection: "🦐 虾池库存流动 (Prawn Summary)",
+        currentPoolStockSection: "🏊 各池实时存量 (Real-time Pool Stock)",
+        btnSaveExit: "保存截图并退出",
+        saving: "保存并退出中...",
+        generatedTag: "SG Aquatic Trading POS • 自动生成结算卡片",
+        btnPrintReceipt: "打印 Receipt",
+        overweightCost: "超重补差价 (RM 0.07/g)",
+        calcTotalPaid: "计算后实付总额",
+        overweightLabel: "超重",
+        withinQuotaLabel: "在免费配额额度内"
+      }
+    };
+
+    const getLocalTodayDate = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const getLocalTodayMonth = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+
+    const getNowIsoString = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+
+    const parseDatePart = (timeStr) => {
+      if (!timeStr) return '';
+      return timeStr.replace(' ', 'T').slice(0, 10);
+    };
+
+    const parseInputToGrams = (val) => {
+      if (!val) return 0;
+      const num = parseFloat(val);
+      if (isNaN(num)) return 0;
+      return Math.round(num);
+    };
+
+    const calculatePrawnOverweight = (fishingFee, catchWeightGrams) => {
+      const fee = parseFloat(fishingFee) || 0;
+      const weight = parseInputToGrams(catchWeightGrams);
+      
+      const allowedWeightGrams = Math.round((fee / 55) * 1300);
+      const excessGrams = Math.max(0, weight - allowedWeightGrams);
+      const overweightFee = excessGrams * 0.07;
+
+      return {
+        allowedWeightGrams,
+        excessGrams,
+        overweightFee
+      };
+    };
+
+    const parseDiscountValue = (discountInput, subtotal) => {
+      if (!discountInput) return 0;
+      const str = String(discountInput).trim();
+      if (str.endsWith('%')) {
+        const pct = parseFloat(str.replace('%', ''));
+        if (isNaN(pct) || pct <= 0) return 0;
+        return (subtotal * pct) / 100;
+      }
+      const val = parseFloat(str);
+      if (isNaN(val) || val <= 0) return 0;
+      return val;
+    };
+
+    const DEFAULT_SALES = [
+      { id: 1, name: 'Encik Rosli', phone: '012-8889911', startTime: `${getLocalTodayDate()}T10:00`, fishingFee: 55, status: 'Active', endTime: '', prawnWeight: '', fbAmount: 15, baitCost: 10, discountVal: 0, totalAmount: 80 },
+      { id: 2, name: 'Ah Hock', phone: '017-3322110', startTime: `${getLocalTodayDate()}T08:00`, endTime: `${getLocalTodayDate()}T11:00`, fishingFee: 110, prawnWeight: 3215, deductPool: 'Kolam Besar', fbAmount: 25, baitCost: 10, discountVal: 10, totalAmount: 178.05, status: 'Completed', catchLogId: 1002 }
+    ];
+
+    const DEFAULT_LOGS = [
+      { id: 1001, time: `${getLocalTodayDate()}T08:00`, type: 'supplier', sourcePool: '', targetPool: 'Kolam Besar', weight: 100000, remark: 'Supplier Stock In (Kolam Besar)' },
+      { id: 1002, time: `${getLocalTodayDate()}T11:00`, type: 'catch', sourcePool: 'Kolam Besar', targetPool: '', weight: 3215, remark: 'Customer Catch (Ah Hock)' }
+    ];
+
+    const loadSalesStorage = () => {
+      try {
+        const saved = localStorage.getItem('prawn_sales');
+        if (!saved) return DEFAULT_SALES;
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_SALES;
+        return parsed.map(item => ({ ...item, prawnWeight: item.prawnWeight ? parseInputToGrams(item.prawnWeight) : '' }));
+      } catch (e) { return DEFAULT_SALES; }
+    };
+
+    const loadLogsStorage = () => {
+      try {
+        const saved = localStorage.getItem('prawn_inventory_logs');
+        if (!saved) return DEFAULT_LOGS;
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_LOGS;
+        return parsed.map(item => ({ ...item, weight: item.weight ? parseInputToGrams(item.weight) : 0 }));
+      } catch (e) { return DEFAULT_LOGS; }
+    };
+
+    const saveStorage = (key, data) => {
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.error("Save error:", e); }
+    };
+
+    const formatWeight = (val) => {
+      const num = parseFloat(val);
+      if (isNaN(num)) return "0";
+      return Math.round(num).toLocaleString('en-US');
+    };
+
+    function App() {
+      const [lang, setLang] = useState('bm');
+      const t = I18N[lang];
+
+      const [currentUser, setCurrentUser] = useState(() => {
+        try {
+          const saved = localStorage.getItem('prawn_user');
+          return saved ? JSON.parse(saved) : USERS[1];
+        } catch(e) { return USERS[1]; }
+      });
+
+      const [activeTab, setActiveTab] = useState('sales');
+      const [filterMode, setFilterMode] = useState('daily');
+      const [filterDate, setFilterDate] = useState(getLocalTodayDate());
+      const [filterMonth, setFilterMonth] = useState(getLocalTodayMonth());
+      const [startDate, setStartDate] = useState(getLocalTodayDate());
+      const [endDate, setEndDate] = useState(getLocalTodayDate());
+
+      const [isCollapsed, setIsCollapsed] = useState(false);
+      const [showReportModal, setShowReportModal] = useState(false);
+      const [isCapturing, setIsCapturing] = useState(false);
+      const [printingReceiptItem, setPrintingReceiptItem] = useState(null);
+
+      const reportRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      const [sales, setSales] = useState(() => loadSalesStorage());
+      const [inventoryLogs, setInventoryLogs] = useState(() => loadLogsStorage());
+
+      useEffect(() => { saveStorage('prawn_sales', sales); }, [sales]);
+      useEffect(() => { saveStorage('prawn_inventory_logs', inventoryLogs); }, [inventoryLogs]);
+      useEffect(() => { saveStorage('prawn_user', currentUser); }, [currentUser]);
+
+      const [authModal, setAuthModal] = useState({ open: false, password: '', error: false, pendingAction: null });
+      const [editConfirmModal, setEditConfirmModal] = useState({ open: false, onConfirm: null });
+
+      const [editingSales, setEditingSales] = useState(null);
+      const [editingLog, setEditingLog] = useState(null);
+
+      const [startForm, setStartForm] = useState({ name: '', phone: '', startTime: getNowIsoString(), fishingFee: 55, fbAmount: 0, baitCost: 0, discountVal: '' });
+      const [checkoutItem, setCheckoutItem] = useState(null);
+      const [checkoutForm, setCheckoutForm] = useState({ endTime: getNowIsoString(), prawnWeight: '', deductPool: 'Kolam Besar', fbAmount: 0, baitCost: 0, discountVal: '' });
+
+      const [supplierForm, setSupplierForm] = useState({ time: getNowIsoString(), targetPool: 'Kolam Besar', weight: '' });
+      const [transferForm, setTransferForm] = useState({ time: getNowIsoString(), sourcePool: 'Kolam Besar', targetPool: 'Kolam 1', weight: '' });
+      const [deadForm, setDeadForm] = useState({ time: getNowIsoString(), sourcePool: 'Kolam Besar', weight: '' });
+      const [lostForm, setLostForm] = useState({ time: getNowIsoString(), sourcePool: 'Kolam Besar', weight: '' });
+
+      const [nameSuggestions, setNameSuggestions] = useState([]);
+      const [phoneSuggestions, setPhoneSuggestions] = useState([]);
+      const [showNameDropdown, setShowNameDropdown] = useState(false);
+      const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
+
+      const isOwner = currentUser?.role === 'Owner';
+
+      const handleTabSwitch = (tab) => {
+        if (tab === 'reports' && !isOwner) {
+          requireOwnerPermission(() => setActiveTab('reports'));
+          return;
+        }
+        setActiveTab(tab);
+      };
+
+      const uniqueCustomers = useMemo(() => {
+        const map = new Map();
+        sales.forEach(s => {
+          if (s.name || s.phone) {
+            const key = (s.name || '').toLowerCase() + '|' + (s.phone || '');
+            if (!map.has(key)) map.set(key, { name: s.name || '', phone: s.phone || '' });
+          }
+        });
+        return Array.from(map.values());
+      }, [sales]);
+
+      const handleNameChange = (val) => {
+        setStartForm(prev => ({ ...prev, name: val }));
+        if (val.trim().length > 0) {
+          const matches = uniqueCustomers.filter(c => c.name.toLowerCase().includes(val.toLowerCase()));
+          setNameSuggestions(matches);
+          setShowNameDropdown(matches.length > 0);
+        } else {
+          setNameSuggestions([]);
+          setShowNameDropdown(false);
+        }
+      };
+
+      const handlePhoneChange = (val) => {
+        setStartForm(prev => ({ ...prev, phone: val }));
+        if (val.trim().length > 0) {
+          const matches = uniqueCustomers.filter(c => c.phone.includes(val));
+          setPhoneSuggestions(matches);
+          setShowPhoneDropdown(matches.length > 0);
+        } else {
+          setPhoneSuggestions([]);
+          setShowPhoneDropdown(false);
+        }
+      };
+
+      const selectCustomer = (cust) => {
+        setStartForm(prev => ({ ...prev, name: cust.name, phone: cust.phone }));
+        setShowNameDropdown(false);
+        setShowPhoneDropdown(false);
+      };
+
+      const handleBackupDatabase = () => {
+        requireOwnerPermission(() => {
+          const dataStr = JSON.stringify({ version: "1.0", backupDate: new Date().toISOString(), sales, inventoryLogs }, null, 2);
+          const blob = new Blob([dataStr], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `SG_Aquatic_DB_Backup_${getLocalTodayDate()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        });
+      };
+
+      const triggerRestoreDatabase = () => {
+        requireOwnerPermission(() => {
+          if (fileInputRef.current) fileInputRef.current.click();
+        });
+      };
+
+      const handleRestoreFileChosen = (e) => {
+        const fileReader = new FileReader();
+        if (e.target.files && e.target.files[0]) {
+          fileReader.readAsText(e.target.files[0], "UTF-8");
+          fileReader.onload = (event) => {
+            try {
+              const parsed = JSON.parse(event.target.result);
+              if (parsed && Array.isArray(parsed.sales) && Array.isArray(parsed.inventoryLogs)) {
+                setSales(parsed.sales);
+                setInventoryLogs(parsed.inventoryLogs);
+                alert("Database restored successfully!");
+              } else { alert("Invalid backup file format!"); }
+            } catch (err) { alert("Error reading file!"); }
+          };
+        }
+      };
+
+      const isDateInFilterRange = (recordTimeStr) => {
+        const recDate = parseDatePart(recordTimeStr);
+        if (!recDate) return false;
+
+        if (filterMode === 'daily') {
+          return recDate === filterDate;
+        } else if (filterMode === 'monthly') {
+          return recDate.slice(0, 7) === filterMonth;
+        } else if (filterMode === 'range') {
+          if (!startDate || !endDate) return true;
+          return recDate >= startDate && recDate <= endDate;
+        }
+        return true;
+      };
+
+      const filteredSales = useMemo(() => {
+        const list = sales.filter(s => isDateInFilterRange(s.startTime));
+
+        return list.sort((a, b) => {
+          if (a.status === 'Active' && b.status !== 'Active') return -1;
+          if (a.status !== 'Active' && b.status === 'Active') return 1;
+
+          const timeA = new Date(a.status === 'Active' ? a.startTime : (a.endTime || a.startTime)).getTime();
+          const timeB = new Date(b.status === 'Active' ? b.startTime : (b.endTime || b.startTime)).getTime();
+          return timeB - timeA;
+        });
+      }, [sales, filterMode, filterDate, filterMonth, startDate, endDate]);
+
+      const filteredLogs = useMemo(() => {
+        const list = inventoryLogs.filter(l => isDateInFilterRange(l.time));
+
+        return list.sort((a, b) => {
+          const timeA = new Date(a.time).getTime();
+          const timeB = new Date(b.time).getTime();
+          return timeB - timeA;
+        });
+      }, [inventoryLogs, filterMode, filterDate, filterMonth, startDate, endDate]);
+
+      const poolBalances = useMemo(() => {
+        const initial = { 'Kolam Besar': 0, 'Kolam 1': 0, 'Kolam 2': 0 };
+        inventoryLogs.forEach(log => {
+          const w = parseFloat(log.weight) || 0;
+          if (log.type === 'supplier') {
+            if (initial[log.targetPool] !== undefined) initial[log.targetPool] += w;
+          } else if (log.type === 'transfer') {
+            if (initial[log.sourcePool] !== undefined) initial[log.sourcePool] -= w;
+            if (initial[log.targetPool] !== undefined) initial[log.targetPool] += w;
+          } else if (log.type === 'dead' || log.type === 'lost' || log.type === 'catch') {
+            if (initial[log.sourcePool] !== undefined) initial[log.sourcePool] -= w;
+          }
+        });
+        return initial;
+      }, [inventoryLogs]);
+
+      const currentSummary = useMemo(() => {
+        const revenue = filteredSales.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+        const fishing = filteredSales.reduce((acc, curr) => acc + (curr.fishingFee || 0), 0);
+        const fb = filteredSales.reduce((acc, curr) => acc + (curr.fbAmount || 0), 0);
+        const bait = filteredSales.reduce((acc, curr) => acc + (curr.baitCost || 0), 0);
+        const totalDiscount = filteredSales.reduce((acc, curr) => {
+          const fish = curr.fishingFee || 0;
+          const fbAmt = curr.fbAmount || 0;
+          const baitAmt = curr.baitCost || 0;
+          const calc = calculatePrawnOverweight(fish, curr.prawnWeight);
+          const subtotal = fish + fbAmt + baitAmt + calc.overweightFee;
+          return acc + parseDiscountValue(curr.discountVal, subtotal);
+        }, 0);
+
+        const supplierIn = filteredLogs.filter(l => l.type === 'supplier').reduce((acc, curr) => acc + (curr.weight || 0), 0);
+        const catchWeight = filteredLogs.filter(l => l.type === 'catch').reduce((acc, curr) => acc + (curr.weight || 0), 0);
+        const deadLoss = filteredLogs.filter(l => l.type === 'dead').reduce((acc, curr) => acc + (curr.weight || 0), 0);
+        const lostCount = filteredLogs.filter(l => l.type === 'lost').reduce((acc, curr) => acc + (curr.weight || 0), 0);
+        const transfers = filteredLogs.filter(l => l.type === 'transfer');
+
+        let titleStr = t.dailySummaryTitle;
+        let dateTagStr = filterDate;
+
+        if (filterMode === 'monthly') {
+          titleStr = t.monthlySummaryTitle;
+          dateTagStr = filterMonth;
+        } else if (filterMode === 'range') {
+          titleStr = t.rangeSummaryTitle;
+          dateTagStr = `${startDate} ~ ${endDate}`;
+        }
+
+        return {
+          title: titleStr,
+          dateTag: dateTagStr,
+          customerCount: filteredSales.length,
+          revenue, fishing, fb, bait, totalDiscount,
+          supplierIn, catchWeight, deadLoss, lostCount, transfers
+        };
+      }, [filteredSales, filteredLogs, filterMode, filterDate, filterMonth, startDate, endDate, t]);
+
+      const exportSalesToCSV = () => {
+        if (!isOwner) { alert("Only Owner can export Excel!"); return; }
+        if (filteredSales.length === 0) { alert("Tiada rekod jualan untuk dieksport."); return; }
+
+        const headers = ["Nama", "Telefon", "Masa Mula", "Masa Tamat", "Status", "Fishing Fee (RM)", "F&B (RM)", "Bait (RM)", "Overweight Fee (RM)", "Discount (RM)", "Total (RM)", "Catch Weight (Gram)", "Pool"];
+        let totalFish = 0, totalFb = 0, totalBait = 0, totalOver = 0, totalDisc = 0, totalRev = 0, totalWeight = 0;
+
+        const rows = filteredSales.map(s => {
+          const fish = parseFloat(s.fishingFee) || 0;
+          const fb = parseFloat(s.fbAmount) || 0;
+          const bait = parseFloat(s.baitCost) || 0;
+          const tot = parseFloat(s.totalAmount) || 0;
+          const w = parseFloat(s.prawnWeight) || 0;
+          const calc = calculatePrawnOverweight(fish, w);
+          const subtotal = fish + fb + bait + calc.overweightFee;
+          const discAmount = parseDiscountValue(s.discountVal, subtotal);
+
+          totalFish += fish; totalFb += fb; totalBait += bait; totalOver += calc.overweightFee; totalDisc += discAmount; totalRev += tot; totalWeight += w;
+          return [`"${(s.name || '').replace(/"/g, '""')}"`, `"${s.phone || ''}"`, `"${s.startTime.replace('T', ' ')}"`, `"${s.endTime ? s.endTime.replace('T', ' ') : ''}"`, `"${s.status || ''}"`, fish.toFixed(2), fb.toFixed(2), bait.toFixed(2), calc.overweightFee.toFixed(2), discAmount.toFixed(2), tot.toFixed(2), w, `"${s.deductPool || ''}"` ];
+        });
+
+        const totalRow = ['"TOTAL"', '""', '""', '""', '""', totalFish.toFixed(2), totalFb.toFixed(2), totalBait.toFixed(2), totalOver.toFixed(2), totalDisc.toFixed(2), totalRev.toFixed(2), totalWeight, '""'];
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(",")), totalRow.join(",")].join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', `SG_Aquatic_Sales_${currentSummary.dateTag.replace(/ /g, '_')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      const exportLogsToCSV = () => {
+        if (!isOwner) { alert("Only Owner can export Excel!"); return; }
+        if (filteredLogs.length === 0) { alert("Tiada rekod untuk dieksport."); return; }
+
+        const headers = ["Masa", "Jenis", "Source Pool", "Target Pool", "Berat Gram", "Remark"];
+        let totalWeight = 0;
+        const rows = filteredLogs.map(l => {
+          const w = parseFloat(l.weight) || 0; totalWeight += w;
+          return [`"${l.time.replace('T', ' ')}"`, `"${l.type}"`, `"${l.sourcePool || ''}"`, `"${l.targetPool || ''}"`, w, `"${(l.remark || '').replace(/"/g, '""')}"` ];
+        });
+
+        const totalRow = ['"TOTAL WEIGHT"', '""', '""', '""', totalWeight, '""'];
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(",")), totalRow.join(",")].join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', `SG_Aquatic_Logs_${currentSummary.dateTag.replace(/ /g, '_')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      const requireOwnerPermission = (callback) => {
+        if (isOwner) {
+          callback();
+        } else {
+          setAuthModal({ open: false, password: '', error: false, pendingAction: null });
+          setAuthModal({ open: true, password: '', error: false, pendingAction: callback });
+        }
+      };
+
+      const handleConfirmAuth = (e) => {
+        e.preventDefault();
+        const ownerUser = USERS.find(u => u.role === 'Owner');
+        if (authModal.password === ownerUser.pin) {
+          if (authModal.pendingAction) authModal.pendingAction();
+          setAuthModal({ open: false, password: '', error: false, pendingAction: null });
+        } else {
+          setAuthModal(prev => ({ ...prev, error: true }));
+        }
+      };
+
+      const printReceipt = (saleItem) => {
+        setPrintingReceiptItem(saleItem);
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      };
+
+      const handleSaveAndExit = async () => {
+        setIsCapturing(true);
+        try {
+          if (reportRef.current && typeof html2canvas !== 'undefined') {
+            const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true });
+            const link = document.createElement('a');
+            link.download = `SG_Aquatic_${filterMode.toUpperCase()}_Report_${currentSummary.dateTag.replace(/ /g, '_')}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+          }
+        } catch (err) { console.error("Screenshot Error:", err); } 
+        finally {
+          saveStorage('prawn_sales', sales);
+          saveStorage('prawn_inventory_logs', inventoryLogs);
+          setIsCapturing(false);
+          setShowReportModal(false);
+        }
+      };
+
+      const handleStartSession = (e) => {
+        e.preventDefault();
+        const fish = parseFloat(startForm.fishingFee) || 0;
+        const fb = parseFloat(startForm.fbAmount) || 0;
+        const bait = parseFloat(startForm.baitCost) || 0;
+        const subtotal = fish + fb + bait;
+        const discAmount = parseDiscountValue(startForm.discountVal, subtotal);
+
+        const newRecord = {
+          id: Date.now(), name: startForm.name, phone: startForm.phone,
+          startTime: startForm.startTime, fishingFee: fish, fbAmount: fb, baitCost: bait,
+          discountVal: startForm.discountVal, status: 'Active', endTime: '', prawnWeight: '', totalAmount: Math.max(0, subtotal - discAmount)
+        };
+        setSales([newRecord, ...sales]);
+
+        const recordDate = parseDatePart(startForm.startTime);
+        if (recordDate && recordDate !== filterDate && filterMode === 'daily') setFilterDate(recordDate);
+
+        setStartForm({ name: '', phone: '', startTime: getNowIsoString(), fishingFee: 55, fbAmount: 0, baitCost: 0, discountVal: '' });
+        setShowNameDropdown(false);
+        setShowPhoneDropdown(false);
+      };
+
+      const handleCompleteCheckout = (e) => {
+        e.preventDefault();
+        const fish = checkoutItem.fishingFee || 0;
+        const fb = parseFloat(checkoutForm.fbAmount) || 0;
+        const bait = parseFloat(checkoutForm.baitCost) || 0;
+        const weightVal = parseInputToGrams(checkoutForm.prawnWeight);
+        
+        const calc = calculatePrawnOverweight(fish, weightVal);
+        const subtotal = fish + fb + bait + calc.overweightFee;
+        const discAmount = parseDiscountValue(checkoutForm.discountVal, subtotal);
+        const grandTotal = Math.max(0, subtotal - discAmount);
+
+        const catchLogId = Date.now();
+
+        if (weightVal > 0) {
+          const targetPoolName = checkoutForm.deductPool || 'Kolam Besar';
+          const catchLog = { id: catchLogId, time: checkoutForm.endTime, type: 'catch', sourcePool: targetPoolName, targetPool: '', weight: weightVal, remark: `Customer Catch (${checkoutItem.name})` };
+          setInventoryLogs(prev => [catchLog, ...prev]);
+        }
+
+        const updatedSalesItem = {
+          ...checkoutItem,
+          endTime: checkoutForm.endTime,
+          prawnWeight: weightVal,
+          deductPool: checkoutForm.deductPool || 'Kolam Besar',
+          fbAmount: fb,
+          baitCost: bait,
+          discountVal: checkoutForm.discountVal,
+          totalAmount: grandTotal,
+          status: 'Completed',
+          catchLogId: weightVal > 0 ? catchLogId : null
+        };
+
+        setSales(sales.map(s => s.id === checkoutItem.id ? updatedSalesItem : s));
+        setCheckoutItem(null);
+      };
+
+      const triggerSaveEditSales = (e) => {
+        e.preventDefault();
+        setEditConfirmModal({
+          open: true,
+          onConfirm: () => executeSaveEditSales()
+        });
+      };
+
+      const executeSaveEditSales = () => {
+        const fish = parseFloat(editingSales.fishingFee) || 0;
+        const fb = parseFloat(editingSales.fbAmount) || 0;
+        const bait = parseFloat(editingSales.baitCost) || 0;
+        const parsedWeight = parseInputToGrams(editingSales.prawnWeight);
+
+        const calc = calculatePrawnOverweight(fish, parsedWeight);
+        const subtotal = fish + fb + bait + calc.overweightFee;
+        const discAmount = parseDiscountValue(editingSales.discountVal, subtotal);
+        const grandTotal = Math.max(0, subtotal - discAmount);
+
+        let currentCatchLogId = editingSales.catchLogId;
+        const targetPoolName = editingSales.deductPool || 'Kolam Besar';
+        const logTime = editingSales.endTime || editingSales.startTime || getNowIsoString();
+
+        setInventoryLogs(prevLogs => {
+          let updatedLogs = prevLogs.filter(l => l.id !== currentCatchLogId);
+
+          if (parsedWeight > 0) {
+            const newLogId = currentCatchLogId || Date.now();
+            currentCatchLogId = newLogId;
+            updatedLogs.unshift({
+              id: newLogId,
+              time: logTime,
+              type: 'catch',
+              sourcePool: targetPoolName,
+              targetPool: '',
+              weight: parsedWeight,
+              remark: `Customer Catch (${editingSales.name})`
+            });
+          } else {
+            currentCatchLogId = null;
+          }
+
+          return updatedLogs;
+        });
+
+        setSales(sales.map(s => s.id === editingSales.id ? {
+          ...editingSales,
+          prawnWeight: parsedWeight,
+          fishingFee: fish,
+          fbAmount: fb,
+          baitCost: bait,
+          discountVal: editingSales.discountVal,
+          totalAmount: grandTotal,
+          catchLogId: currentCatchLogId
+        } : s));
+
+        setEditingSales(null);
+        setEditConfirmModal({ open: false, onConfirm: null });
+      };
+
+      const triggerSaveEditLog = (e) => {
+        e.preventDefault();
+        setEditConfirmModal({
+          open: true,
+          onConfirm: () => executeSaveEditLog()
+        });
+      };
+
+      const executeSaveEditLog = () => {
+        const w = parseInputToGrams(editingLog.weight || 0);
+
+        setInventoryLogs(inventoryLogs.map(l => l.id === editingLog.id ? { ...editingLog, weight: w } : l));
+
+        if (editingLog.type === 'catch') {
+          setSales(prevSales => prevSales.map(s => {
+            if (s.catchLogId === editingLog.id) {
+              const fish = s.fishingFee || 0;
+              const fb = s.fbAmount || 0;
+              const bait = s.baitCost || 0;
+              const calc = calculatePrawnOverweight(fish, w);
+              const subtotal = fish + fb + bait + calc.overweightFee;
+              const discAmount = parseDiscountValue(s.discountVal, subtotal);
+              return { ...s, prawnWeight: w, deductPool: editingLog.sourcePool || s.deductPool || 'Kolam Besar', totalAmount: Math.max(0, subtotal - discAmount) };
+            }
+            return s;
+          }));
+        }
+        setEditingLog(null);
+        setEditConfirmModal({ open: false, onConfirm: null });
+      };
+
+      const triggerSupplierIn = (e) => {
+        e.preventDefault();
+        const w = parseInputToGrams(supplierForm.weight || 0);
+        if (w <= 0) return;
+        setEditConfirmModal({
+          open: true,
+          onConfirm: () => {
+            setInventoryLogs([{ id: Date.now(), time: supplierForm.time, type: 'supplier', sourcePool: '', targetPool: supplierForm.targetPool, weight: w, remark: `Supplier Stock In (${supplierForm.targetPool})` }, ...inventoryLogs]);
+            setSupplierForm({ time: getNowIsoString(), targetPool: 'Kolam Besar', weight: '' });
+            setEditConfirmModal({ open: false, onConfirm: null });
+          }
+        });
+      };
+
+      const triggerTransfer = (e) => {
+        e.preventDefault();
+        const w = parseInputToGrams(transferForm.weight || 0);
+        if (w <= 0 || transferForm.sourcePool === transferForm.targetPool) { alert("Invalid transfer settings!"); return; }
+        
+        const currentStockInGram = poolBalances[transferForm.sourcePool] || 0;
+        if (currentStockInGram < w) {
+          alert(`Source Pool (${transferForm.sourcePool}) insufficient stock! Available: ${formatWeight(currentStockInGram)} g`);
+          return;
+        }
+
+        setEditConfirmModal({
+          open: true,
+          onConfirm: () => {
+            setInventoryLogs([{ id: Date.now(), time: transferForm.time, type: 'transfer', sourcePool: transferForm.sourcePool, targetPool: transferForm.targetPool, weight: w, remark: `Pool Transfer (${transferForm.sourcePool} ➔ ${transferForm.targetPool})` }, ...inventoryLogs]);
+            setTransferForm({ time: getNowIsoString(), sourcePool: 'Kolam Besar', targetPool: 'Kolam 1', weight: '' });
+            setEditConfirmModal({ open: false, onConfirm: null });
+          }
+        });
+      };
+
+      const triggerDeadPrawn = (e) => {
+        e.preventDefault();
+        const w = parseInputToGrams(deadForm.weight || 0);
+        if (w <= 0) return;
+        setEditConfirmModal({
+          open: true,
+          onConfirm: () => {
+            setInventoryLogs([{ id: Date.now(), time: deadForm.time, type: 'dead', sourcePool: deadForm.sourcePool, targetPool: '', weight: w, remark: `Jumlah Udang Mati (${deadForm.sourcePool})` }, ...inventoryLogs]);
+            setDeadForm({ time: getNowIsoString(), sourcePool: 'Kolam Besar', weight: '' });
+            setEditConfirmModal({ open: false, onConfirm: null });
+          }
+        });
+      };
+
+      const triggerLostCount = (e) => {
+        e.preventDefault();
+        const w = parseInputToGrams(lostForm.weight || 0);
+        if (w <= 0) return;
+        setEditConfirmModal({
+          open: true,
+          onConfirm: () => {
+            setInventoryLogs([{ id: Date.now(), time: lostForm.time, type: 'lost', sourcePool: lostForm.sourcePool, targetPool: '', weight: w, remark: `Rekod Hilang (${lostForm.sourcePool})` }, ...inventoryLogs]);
+            setLostForm({ time: getNowIsoString(), sourcePool: 'Kolam Besar', weight: '' });
+            setEditConfirmModal({ open: false, onConfirm: null });
+          }
+        });
+      };
+
+      const deleteSalesItem = (id) => {
+        requireOwnerPermission(() => {
+          setEditConfirmModal({
+            open: true,
+            onConfirm: () => {
+              const targetSale = sales.find(s => s.id === id);
+              if (targetSale) {
+                if (targetSale.catchLogId) {
+                  setInventoryLogs(prev => prev.filter(l => l.id !== targetSale.catchLogId));
+                } else {
+                  setInventoryLogs(prev => prev.filter(l => !(l.type === 'catch' && l.remark && l.remark.includes(targetSale.name))));
+                }
+              }
+              setSales(prev => prev.filter(s => s.id !== id));
+              setEditConfirmModal({ open: false, onConfirm: null });
+            }
+          });
+        });
+      };
+
+      const deleteLog = (id) => {
+        requireOwnerPermission(() => {
+          setEditConfirmModal({
+            open: true,
+            onConfirm: () => {
+              const targetLog = inventoryLogs.find(l => l.id === id);
+              if (targetLog && targetLog.type === 'catch') {
+                setSales(prevSales => prevSales.map(s => {
+                  if (s.catchLogId === id) {
+                    const fish = s.fishingFee || 0;
+                    const fb = s.fbAmount || 0;
+                    const bait = s.baitCost || 0;
+                    const subtotal = fish + fb + bait;
+                    const discAmount = parseDiscountValue(s.discountVal, subtotal);
+                    return { ...s, prawnWeight: '', catchLogId: null, totalAmount: Math.max(0, subtotal - discAmount) };
+                  }
+                  return s;
+                }));
+              }
+              setInventoryLogs(prev => prev.filter(l => l.id !== id));
+              setEditConfirmModal({ open: false, onConfirm: null });
+            }
+          });
+        });
+      };
+
+      const handleResetToday = () => {
+        setFilterMode('daily');
+        setFilterDate(getLocalTodayDate());
+        setFilterMonth(getLocalTodayMonth());
+        setStartDate(getLocalTodayDate());
+        setEndDate(getLocalTodayDate());
+      };
+
+      return (
+        <div className="flex h-screen bg-slate-100 overflow-hidden">
+          <input type="file" ref={fileInputRef} onChange={handleRestoreFileChosen} accept=".json" className="hidden" />
+
+          {printingReceiptItem && (() => {
+            const fish = printingReceiptItem.fishingFee || 0;
+            const fb = printingReceiptItem.fbAmount || 0;
+            const bait = printingReceiptItem.baitCost || 0;
+            const calc = calculatePrawnOverweight(fish, printingReceiptItem.prawnWeight);
+            const subtotal = fish + fb + bait + calc.overweightFee;
+            const discAmount = parseDiscountValue(printingReceiptItem.discountVal, subtotal);
+
+            return (
+              <div id="printable-receipt" className="hidden">
+                <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                  <h2 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{COMPANY_INFO.name}</h2>
+                  <div style={{ fontSize: '10px' }}>Reg No: {COMPANY_INFO.regNo}</div>
+                  <div style={{ fontSize: '10px', marginTop: '4px' }}>{COMPANY_INFO.address}</div>
+                  <div style={{ fontSize: '10px' }}>Tel: {COMPANY_INFO.contact}</div>
+                </div>
+                <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
+                <div className="flex-row-item">
+                  <span>Receipt No:</span>
+                  <span>#{printingReceiptItem.id}</span>
+                </div>
+                <div className="flex-row-item">
+                  <span>Customer:</span>
+                  <span>{printingReceiptItem.name}</span>
+                </div>
+                <div className="flex-row-item">
+                  <span>Phone:</span>
+                  <span>{printingReceiptItem.phone}</span>
+                </div>
+                <div className="flex-row-item">
+                  <span>Start Time:</span>
+                  <span>{printingReceiptItem.startTime.replace('T', ' ')}</span>
+                </div>
+                {printingReceiptItem.endTime && (
+                  <div className="flex-row-item">
+                    <span>End Time:</span>
+                    <span>{printingReceiptItem.endTime.replace('T', ' ')}</span>
+                  </div>
+                )}
+                <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
+                
+                <div className="flex-row-item" style={{ marginBottom: '4px' }}>
+                  <span>Fishing Fee:</span>
+                  <span>RM {fish.toFixed(2)}</span>
+                </div>
+                <div className="flex-row-item" style={{ marginBottom: '4px' }}>
+                  <span>F&B Amount:</span>
+                  <span>RM {fb.toFixed(2)}</span>
+                </div>
+                <div className="flex-row-item" style={{ marginBottom: '4px' }}>
+                  <span>Bait Cost:</span>
+                  <span>RM {bait.toFixed(2)}</span>
+                </div>
+
+                {calc.overweightFee > 0 && (
+                  <div className="flex-row-item" style={{ marginBottom: '4px', fontStyle: 'italic' }}>
+                    <span>Overweight ({formatWeight(calc.excessGrams)}g):</span>
+                    <span>RM {calc.overweightFee.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {discAmount > 0 && (
+                  <div className="flex-row-item" style={{ marginBottom: '4px', fontStyle: 'italic' }}>
+                    <span>Discount ({printingReceiptItem.discountVal}):</span>
+                    <span>-RM {discAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
+                
+                <div className="flex-row-item" style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                  <span>TOTAL PAID:</span>
+                  <span>RM {(printingReceiptItem.totalAmount || 0).toFixed(2)}</span>
+                </div>
+
+                {printingReceiptItem.prawnWeight > 0 && (
+                  <div className="flex-row-item" style={{ marginTop: '6px', fontSize: '10px' }}>
+                    <span>Catch Weight:</span>
+                    <span>{formatWeight(printingReceiptItem.prawnWeight)} g (Quota: {formatWeight(calc.allowedWeightGrams)}g)</span>
+                  </div>
+                )}
+
+                <div style={{ borderTop: '1px dashed #000', margin: '12px 0 8px 0' }}></div>
+                <div style={{ textAlign: 'center', fontSize: '10px' }}>
+                  <div>Thank You & Happy Fishing!</div>
+                  <div style={{ marginTop: '4px' }}>Please Come Again</div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Sidebar */}
+          <div className={`${isCollapsed ? 'w-16 min-w-[4rem]' : 'w-64 min-w-[16rem]'} bg-slate-900 text-white flex flex-col justify-between p-3 shadow-xl z-20 transition-all duration-300 overflow-hidden`}>
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-emerald-500 p-2 rounded-xl text-slate-900 font-bold shrink-0">
+                    <i className="fa-solid fa-fish text-xl"></i>
+                  </div>
+                  {!isCollapsed && (
+                    <div className="overflow-hidden whitespace-nowrap">
+                      <h1 className="font-black text-sm text-emerald-400">{COMPANY_INFO.name}</h1>
+                      <span className="text-[10px] text-slate-400 block">{COMPANY_INFO.regNo}</span>
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={() => setIsCollapsed(!isCollapsed)} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition shrink-0 ml-1">
+                  <i className={`fa-solid ${isCollapsed ? 'fa-angles-right' : 'fa-angles-left'} text-sm`}></i>
+                </button>
+              </div>
+
+              {!isCollapsed && (
+                <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 mb-5 flex justify-between items-center">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${isOwner ? 'bg-amber-500 text-slate-900' : 'bg-blue-500 text-white'}`}>
+                      {currentUser.role === 'Owner' ? '👑' : '👤'}
+                    </div>
+                    <div className="overflow-hidden truncate">
+                      <div className="font-bold text-xs text-slate-200 truncate">{currentUser.name}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">Role: {currentUser.role}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <nav className="space-y-2">
+                <button 
+                  onClick={() => handleTabSwitch('sales')} 
+                  title={t.navSales}
+                  className={`w-full flex items-center p-3 rounded-xl font-medium text-sm transition ${activeTab === 'sales' ? 'bg-emerald-500 text-slate-900 font-bold' : 'text-slate-400 hover:bg-slate-800'} ${isCollapsed ? 'justify-center' : 'px-4'}`}
+                >
+                  <i className="fa-solid fa-receipt text-base shrink-0"></i>
+                  {!isCollapsed && <span className="ml-3 truncate">{t.navSales}</span>}
+                </button>
+
+                <button 
+                  onClick={() => handleTabSwitch('inventory')} 
+                  title={t.navInventory}
+                  className={`w-full flex items-center p-3 rounded-xl font-medium text-sm transition ${activeTab === 'inventory' ? 'bg-emerald-500 text-slate-900 font-bold' : 'text-slate-400 hover:bg-slate-800'} ${isCollapsed ? 'justify-center' : 'px-4'}`}
+                >
+                  <i className="fa-solid fa-boxes-stacked text-base shrink-0"></i>
+                  {!isCollapsed && <span className="ml-3 truncate">{t.navInventory}</span>}
+                </button>
+
+                <button 
+                  onClick={() => handleTabSwitch('reports')} 
+                  title={t.navReports}
+                  className={`w-full flex items-center p-3 rounded-xl font-medium text-sm transition ${activeTab === 'reports' ? 'bg-emerald-500 text-slate-900 font-bold' : 'text-slate-400 hover:bg-slate-800'} ${isCollapsed ? 'justify-center' : 'px-4'}`}
+                >
+                  <i className="fa-solid fa-chart-pie text-base shrink-0"></i>
+                  {!isCollapsed && (
+                    <span className="ml-3 truncate flex items-center gap-1.5">
+                      {t.navReports}
+                      {!isOwner && <i className="fa-solid fa-lock text-[10px] text-amber-400"></i>}
+                    </span>
+                  )}
+                </button>
+              </nav>
+            </div>
+
+            {!isCollapsed && (
+              <div className="text-[11px] text-slate-500 border-t border-slate-800 pt-3 overflow-hidden">
+                <p className="truncate">{COMPANY_INFO.address}</p>
+                <p>Tel: {COMPANY_INFO.contact}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Workspace */}
+          <div className="flex-1 overflow-y-auto p-8">
+            <div className="mb-6 bg-white p-4 rounded-2xl shadow-sm border flex flex-wrap justify-between items-center gap-4">
+              <div className="flex items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-800">{COMPANY_INFO.name}</h2>
+                  <p className="text-xs text-slate-500">{t.sysOverview}</p>
+                </div>
+
+                <div className="bg-slate-100 p-1.5 rounded-xl border flex items-center gap-2">
+                  <div className="flex bg-slate-200 p-0.5 rounded-lg text-xs font-bold">
+                    <button onClick={() => setFilterMode('daily')} className={`px-2 py-1 rounded-md transition ${filterMode === 'daily' ? 'bg-emerald-500 text-slate-900 font-bold shadow-sm' : 'text-slate-600'}`}>{t.byDay}</button>
+                    <button onClick={() => setFilterMode('monthly')} className={`px-2 py-1 rounded-md transition ${filterMode === 'monthly' ? 'bg-emerald-500 text-slate-900 font-bold shadow-sm' : 'text-slate-600'}`}>{t.byMonth}</button>
+                    <button onClick={() => setFilterMode('range')} className={`px-2 py-1 rounded-md transition ${filterMode === 'range' ? 'bg-emerald-500 text-slate-900 font-bold shadow-sm' : 'text-slate-600'}`}>{t.byRange}</button>
+                  </div>
+
+                  {filterMode === 'daily' && (
+                    <input type="date" className="p-1 text-xs border rounded-lg bg-white font-bold" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+                  )}
+
+                  {filterMode === 'monthly' && (
+                    <input type="month" className="p-1 text-xs border rounded-lg bg-white font-bold" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} />
+                  )}
+
+                  {filterMode === 'range' && (
+                    <div className="flex items-center gap-1 text-xs font-bold">
+                      <input type="date" className="p-1 border rounded-lg bg-white" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                      <span className="text-slate-400">{t.toWord}</span>
+                      <input type="date" className="p-1 border rounded-lg bg-white" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                    </div>
+                  )}
+
+                  <button onClick={handleResetToday} className="text-[10px] bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded font-bold transition">{t.resetToday}</button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border">
+                  <div className="text-xs font-bold px-2 text-slate-700">
+                    <span className="text-slate-400 mr-1">User:</span>
+                    <span className={isOwner ? "text-amber-600 font-black" : "text-blue-600 font-bold"}>{currentUser.name}</span>
+                  </div>
+
+                  <select 
+                    className="p-1 text-xs bg-white border rounded-lg font-bold"
+                    value={currentUser.username}
+                    onChange={(e) => {
+                      const selected = USERS.find(u => u.username === e.target.value);
+                      if (selected.role === 'Owner') {
+                        requireOwnerPermission(() => setCurrentUser(selected));
+                      } else {
+                        setCurrentUser(selected);
+                      }
+                    }}
+                  >
+                    {USERS.map(u => (
+                      <option key={u.username} value={u.username}>{u.name} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {isOwner && (
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border">
+                    <button onClick={handleBackupDatabase} className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs flex items-center gap-1 transition shadow-sm" title="Export database backup JSON file">
+                      <i className="fa-solid fa-download"></i> {t.btnBackup}
+                    </button>
+                    <button onClick={triggerRestoreDatabase} className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded-lg text-xs flex items-center gap-1 transition shadow-sm" title="Import/restore database JSON file">
+                      <i className="fa-solid fa-upload"></i> {t.btnRestore}
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex bg-slate-200 p-1 rounded-xl text-xs font-bold gap-1">
+                  <button onClick={() => setLang('bm')} className={`px-2.5 py-1 rounded-lg transition ${lang === 'bm' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>BM</button>
+                  <button onClick={() => setLang('en')} className={`px-2.5 py-1 rounded-lg transition ${lang === 'en' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>EN</button>
+                  <button onClick={() => setLang('zh')} className={`px-2.5 py-1 rounded-lg transition ${lang === 'zh' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>中文</button>
+                </div>
+
+                {isOwner && (
+                  <button onClick={() => setShowReportModal(true)} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow-md transition">
+                    <i className="fa-solid fa-camera"></i> {t.genScreenshot}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {activeTab === 'sales' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <form onSubmit={handleStartSession} className="bg-white p-6 rounded-2xl shadow-sm border space-y-4 h-fit">
+                  <h3 className="font-bold text-lg border-b pb-2 text-slate-700">{t.addCustomer}</h3>
+                  
+                  <div className="relative">
+                    <label className="text-xs font-bold text-slate-500">{t.custName}</label>
+                    <input required type="text" className="w-full mt-1 p-2 border rounded-lg text-sm" value={startForm.name} onChange={e => handleNameChange(e.target.value)} onFocus={() => { if (nameSuggestions.length > 0) setShowNameDropdown(true); }} onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)} placeholder="e.g. Encik Rosli" />
+                    {showNameDropdown && nameSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 max-h-40 overflow-y-auto divide-y">
+                        {nameSuggestions.map((item, idx) => (
+                          <div key={idx} onClick={() => selectCustomer(item)} className="p-2.5 hover:bg-emerald-50 cursor-pointer flex justify-between items-center text-xs transition">
+                            <span className="font-bold text-slate-800">{item.name}</span>
+                            <span className="text-slate-400 font-mono">{item.phone}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <label className="text-xs font-bold text-slate-500">{t.custPhone}</label>
+                    <input required type="text" className="w-full mt-1 p-2 border rounded-lg text-sm" value={startForm.phone} onChange={e => handlePhoneChange(e.target.value)} onFocus={() => { if (phoneSuggestions.length > 0) setShowPhoneDropdown(true); }} onBlur={() => setTimeout(() => setShowPhoneDropdown(false), 200)} placeholder="012-3456789" />
+                    {showPhoneDropdown && phoneSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 max-h-40 overflow-y-auto divide-y">
+                        {phoneSuggestions.map((item, idx) => (
+                          <div key={idx} onClick={() => selectCustomer(item)} className="p-2.5 hover:bg-emerald-50 cursor-pointer flex justify-between items-center text-xs transition">
+                            <span className="font-bold text-slate-800">{item.name}</span>
+                            <span className="text-slate-400 font-mono">{item.phone}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-slate-500">{t.startTime}</label>
+                      <button type="button" onClick={() => setStartForm({ ...startForm, startTime: getNowIsoString() })} className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold px-2 py-0.5 rounded transition flex items-center gap-1 border border-blue-200">
+                        <i className="fa-solid fa-clock"></i> {t.btnNowTime}
+                      </button>
+                    </div>
+                    <input type="datetime-local" required className="w-full mt-1 p-2 border rounded-lg text-sm" value={startForm.startTime} onChange={e=>setStartForm({...startForm, startTime: e.target.value})} />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-slate-500">{t.fishingFee}</label>
+                      <span className="text-[10px] text-emerald-600 font-bold">Quota: {formatWeight((startForm.fishingFee / 55) * 1300)}g</span>
+                    </div>
+                    <input type="number" required className="w-full mt-1 p-2 border rounded-lg text-sm" value={startForm.fishingFee} onChange={e=>setStartForm({...startForm, fishingFee: e.target.value})} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-bold text-slate-500">{t.fbCost}</label>
+                      <input type="number" placeholder="RM 0" className="w-full mt-1 p-2 border rounded-lg text-sm" value={startForm.fbAmount} onChange={e=>setStartForm({...startForm, fbAmount: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500">{t.baitCost}</label>
+                      <input type="number" placeholder="RM 0" className="w-full mt-1 p-2 border rounded-lg text-sm" value={startForm.baitCost} onChange={e=>setStartForm({...startForm, baitCost: e.target.value})} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500">{t.discountLabel}</label>
+                    <input type="text" placeholder="e.g. 10 or 10%" className="w-full mt-1 p-2 border rounded-lg text-sm bg-rose-50/50 border-rose-200 font-bold text-rose-600" value={startForm.discountVal} onChange={e=>setStartForm({...startForm, discountVal: e.target.value})} />
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition">{t.btnStart}</button>
+                </form>
+
+                <div className="bg-white p-6 rounded-2xl shadow-sm border lg:col-span-2 overflow-x-auto">
+                  <h3 className="font-bold text-lg border-b pb-4 mb-4 text-slate-700 flex flex-wrap justify-between items-center gap-2">
+                    <span>【{currentSummary.dateTag}】{t.salesRecordTitle}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-normal text-slate-500">{t.totalCount}: {filteredSales.length}</span>
+                      {isOwner && (
+                        <button onClick={exportSalesToCSV} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow-sm">
+                          <i className="fa-solid fa-file-excel"></i> {t.btnExportExcel}
+                        </button>
+                      )}
+                    </div>
+                  </h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b text-slate-400">
+                        <th className="pb-2">{t.thInfo}</th>
+                        <th className="pb-2">{t.thTime}</th>
+                        <th className="pb-2">{t.thBait}</th>
+                        <th className="pb-2">{t.thFB}</th>
+                        <th className="pb-2">{t.thCatch}</th>
+                        <th className="pb-2 text-right">{t.thTotalStatus}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredSales.map(s => {
+                        const fish = s.fishingFee || 0;
+                        const fb = s.fbAmount || 0;
+                        const bait = s.baitCost || 0;
+                        const calc = calculatePrawnOverweight(fish, s.prawnWeight);
+                        const subtotal = fish + fb + bait + calc.overweightFee;
+                        const discAmount = parseDiscountValue(s.discountVal, subtotal);
+
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50">
+                            <td className="py-3 font-medium">
+                              <div className="font-bold text-slate-800">{s.name}</div>
+                              <div className="text-xs text-slate-400">{s.phone}</div>
+                            </td>
+                            <td className="py-3 text-xs text-slate-600">
+                              <div><i className="fa-regular fa-clock text-blue-500 mr-1"></i>{s.startTime.replace('T', ' ')}</div>
+                              {s.endTime ? (
+                                <div className="text-slate-400 mt-0.5"><i className="fa-solid fa-flag-checkered text-emerald-500 mr-1"></i>{s.endTime.replace('T', ' ')}</div>
+                              ) : (
+                                <span className="inline-block mt-1 text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">{t.statusFishing}</span>
+                              )}
+                            </td>
+                            <td className="py-3 text-slate-700 font-semibold">RM {bait.toFixed(2)}</td>
+                            <td className="py-3 text-slate-700 font-semibold">RM {fb.toFixed(2)}</td>
+                            <td className="py-3 font-semibold text-amber-600">
+                              {s.prawnWeight ? (
+                                <div>
+                                  <div>{formatWeight(s.prawnWeight)} g</div>
+                                  {calc.excessGrams > 0 && (
+                                    <span className="text-[10px] text-red-500 font-bold block">{t.overweightLabel} +{formatWeight(calc.excessGrams)}g (+RM{calc.overweightFee.toFixed(2)})</span>
+                                  )}
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td className="py-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                {s.status === 'Active' ? (
+                                  <button onClick={() => { setCheckoutItem(s); setCheckoutForm({ endTime: getNowIsoString(), prawnWeight: '', deductPool: 'Kolam Besar', fbAmount: s.fbAmount || 0, baitCost: s.baitCost || 0, discountVal: s.discountVal || '' }); }} className="px-3 py-1.5 bg-emerald-500 text-slate-900 font-bold rounded-lg text-xs">
+                                    {t.btnCheckout}
+                                  </button>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-right">
+                                      <div className="text-emerald-600 font-black text-sm">RM {s.totalAmount.toFixed(2)}</div>
+                                      {discAmount > 0 && (
+                                        <div className="text-[10px] text-rose-500 font-bold">-RM {discAmount.toFixed(2)}</div>
+                                      )}
+                                      <span className="text-[10px] text-slate-400">{t.statusPaid}</span>
+                                    </div>
+                                    <button onClick={() => printReceipt(s)} className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs" title={t.btnPrintReceipt}>
+                                      <i className="fa-solid fa-print"></i>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {isOwner && (
+                                  <>
+                                    <button onClick={() => requireOwnerPermission(() => setEditingSales(s))} className="text-slate-400 hover:text-blue-600 p-1" title="Edit">
+                                      <i className="fa-solid fa-pen-to-square"></i>
+                                    </button>
+
+                                    <button onClick={() => deleteSalesItem(s.id)} className="text-slate-300 hover:text-red-600 p-1" title="Delete">
+                                      <i className="fa-solid fa-trash"></i>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'inventory' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  {['Kolam Besar', 'Kolam 1', 'Kolam 2'].map(pool => (
+                    <div key={pool} className="bg-white p-4 rounded-2xl border shadow-sm">
+                      <div className="text-slate-400 text-xs font-bold uppercase">{pool} ({t.realtimeStock})</div>
+                      <div className="text-2xl font-black text-slate-800 mt-1">{formatWeight(poolBalances[pool])} <span className="text-xs font-normal">g</span></div>
+                    </div>
+                  ))}
+
+                  <div className="bg-red-50 p-4 rounded-2xl border border-red-100 shadow-sm">
+                    <div className="text-red-500 text-xs font-bold uppercase">{t.deadPrawn}</div>
+                    <div className="text-2xl font-black text-red-600 mt-1">-{formatWeight(currentSummary.deadLoss)} <span className="text-xs font-normal">g</span></div>
+                  </div>
+
+                  <div className="bg-purple-50 p-4 rounded-2xl border border-purple-100 shadow-sm">
+                    <div className="text-purple-600 text-xs font-bold uppercase">{t.lostRecord}</div>
+                    <div className="text-2xl font-black text-purple-600 mt-1">-{formatWeight(currentSummary.lostCount)} <span className="text-xs font-normal">g</span></div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <form onSubmit={triggerSupplierIn} className="bg-white p-4 rounded-2xl border space-y-3">
+                    <h3 className="font-bold text-blue-600 border-b pb-2 text-sm">{t.supplierInTitle}</h3>
+                    <div>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[11px] font-bold text-slate-500">{t.recordTime}</label>
+                        <button type="button" onClick={() => setSupplierForm({ ...supplierForm, time: getNowIsoString() })} className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold px-1.5 py-0.5 rounded border border-blue-200">
+                          <i className="fa-solid fa-clock"></i> {t.btnNowTime}
+                        </button>
+                      </div>
+                      <input type="datetime-local" required className="w-full mt-1 p-1.5 border rounded-lg text-xs" value={supplierForm.time} onChange={e=>setSupplierForm({...supplierForm, time: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.targetPool}</label>
+                      <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={supplierForm.targetPool} onChange={e=>setSupplierForm({...supplierForm, targetPool: e.target.value})}>
+                        <option value="Kolam Besar">Kolam Besar</option>
+                        <option value="Kolam 1">Kolam 1</option>
+                        <option value="Kolam 2">Kolam 2</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.weightGram}</label>
+                      <input type="number" required placeholder="0" className="w-full mt-1 p-2 border rounded-lg font-bold text-xs" value={supplierForm.weight} onChange={e=>setSupplierForm({...supplierForm, weight: e.target.value})} />
+                    </div>
+                    <button type="submit" className="w-full py-2 bg-blue-600 text-white font-bold rounded-xl text-xs">{t.btnAddStock}</button>
+                  </form>
+
+                  <form onSubmit={triggerTransfer} className="bg-white p-4 rounded-2xl border space-y-3">
+                    <h3 className="font-bold text-amber-600 border-b pb-2 text-sm">{t.transferTitle}</h3>
+                    <div>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[11px] font-bold text-slate-500">{t.recordTime}</label>
+                        <button type="button" onClick={() => setTransferForm({ ...transferForm, time: getNowIsoString() })} className="text-[10px] bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold px-1.5 py-0.5 rounded border border-amber-200">
+                          <i className="fa-solid fa-clock"></i> {t.btnNowTime}
+                        </button>
+                      </div>
+                      <input type="datetime-local" required className="w-full mt-1 p-1.5 border rounded-lg text-xs" value={transferForm.time} onChange={e=>setTransferForm({...transferForm, time: e.target.value})} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500">{t.fromPool}</label>
+                        <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={transferForm.sourcePool} onChange={e=>setTransferForm({...transferForm, sourcePool: e.target.value})}>
+                          <option value="Kolam Besar">Kolam Besar</option>
+                          <option value="Kolam 1">Kolam 1</option>
+                          <option value="Kolam 2">Kolam 2</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500">{t.toPool}</label>
+                        <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={transferForm.targetPool} onChange={e=>setTransferForm({...transferForm, targetPool: e.target.value})}>
+                          <option value="Kolam 1">Kolam 1</option>
+                          <option value="Kolam 2">Kolam 2</option>
+                          <option value="Kolam Besar">Kolam Besar</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.weightGram}</label>
+                      <input type="number" required placeholder="0" className="w-full mt-1 p-2 border rounded-lg font-bold text-xs" value={transferForm.weight} onChange={e=>setTransferForm({...transferForm, weight: e.target.value})} />
+                    </div>
+                    <button type="submit" className="w-full py-2 bg-amber-500 text-slate-900 font-bold rounded-xl text-xs">{t.btnTransfer}</button>
+                  </form>
+
+                  <form onSubmit={triggerDeadPrawn} className="bg-white p-4 rounded-2xl border space-y-3">
+                    <h3 className="font-bold text-red-600 border-b pb-2 text-sm">{t.deadPrawnTitle}</h3>
+                    <div>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[11px] font-bold text-slate-500">{t.recordTime}</label>
+                        <button type="button" onClick={() => setDeadForm({ ...deadForm, time: getNowIsoString() })} className="text-[10px] bg-red-50 text-red-600 hover:bg-red-100 font-bold px-1.5 py-0.5 rounded border border-red-200">
+                          <i className="fa-solid fa-clock"></i> {t.btnNowTime}
+                        </button>
+                      </div>
+                      <input type="datetime-local" required className="w-full mt-1 p-1.5 border rounded-lg text-xs" value={deadForm.time} onChange={e=>setDeadForm({...deadForm, time: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.sourcePool}</label>
+                      <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={deadForm.sourcePool} onChange={e=>setDeadForm({...deadForm, sourcePool: e.target.value})}>
+                        <option value="Kolam Besar">Kolam Besar</option>
+                        <option value="Kolam 1">Kolam 1</option>
+                        <option value="Kolam 2">Kolam 2</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.weightGram}</label>
+                      <input type="number" required placeholder="0" className="w-full mt-1 p-2 border border-red-200 bg-red-50/30 rounded-lg font-bold text-red-600 text-xs" value={deadForm.weight} onChange={e=>setDeadForm({...deadForm, weight: e.target.value})} />
+                    </div>
+                    <button type="submit" className="w-full py-2 bg-red-600 text-white font-bold rounded-xl text-xs">{t.btnRecordDead}</button>
+                  </form>
+
+                  <form onSubmit={triggerLostCount} className="bg-white p-4 rounded-2xl border space-y-3">
+                    <h3 className="font-bold text-purple-600 border-b pb-2 text-sm">{t.lostTitle}</h3>
+                    <div>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[11px] font-bold text-slate-500">{t.recordTime}</label>
+                        <button type="button" onClick={() => setLostForm({ ...lostForm, time: getNowIsoString() })} className="text-[10px] bg-purple-50 text-purple-600 hover:bg-purple-100 font-bold px-1.5 py-0.5 rounded border border-purple-200">
+                          <i className="fa-solid fa-clock"></i> {t.btnNowTime}
+                        </button>
+                      </div>
+                      <input type="datetime-local" required className="w-full mt-1 p-1.5 border rounded-lg text-xs" value={lostForm.time} onChange={e=>setLostForm({...lostForm, time: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.sourcePool}</label>
+                      <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={lostForm.sourcePool} onChange={e=>setLostForm({...lostForm, sourcePool: e.target.value})}>
+                        <option value="Kolam Besar">Kolam Besar</option>
+                        <option value="Kolam 1">Kolam 1</option>
+                        <option value="Kolam 2">Kolam 2</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500">{t.weightGram}</label>
+                      <input type="number" required placeholder="0" className="w-full mt-1 p-2 border border-purple-200 bg-purple-50/30 rounded-lg font-bold text-purple-600 text-xs" value={lostForm.weight} onChange={e=>setLostForm({...lostForm, weight: e.target.value})} />
+                    </div>
+                    <button type="submit" className="w-full py-2 bg-purple-600 text-white font-bold rounded-xl text-xs">{t.btnRecordLost}</button>
+                  </form>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border shadow-sm">
+                  <h3 className="font-bold text-lg text-slate-700 border-b pb-3 mb-4 flex flex-wrap justify-between items-center gap-2">
+                    <span>【{currentSummary.dateTag}】{t.inventoryLogsTitle}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-normal text-slate-500">{t.totalCount}: {filteredLogs.length}</span>
+                      {isOwner && (
+                        <button onClick={exportLogsToCSV} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow-sm">
+                          <i className="fa-solid fa-file-excel"></i> {t.btnExportExcel}
+                        </button>
+                      )}
+                    </div>
+                  </h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b text-slate-400">
+                        <th className="pb-2">Masa</th>
+                        <th className="pb-2">Jenis</th>
+                        <th className="pb-2">Catatan</th>
+                        <th className="pb-2 text-right">Berat (Gram)</th>
+                        {isOwner && <th className="pb-2 text-right">Tindakan</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredLogs.map(log => (
+                        <tr key={log.id} className="hover:bg-slate-50">
+                          <td className="py-2.5 text-xs text-slate-500">{log.time.replace('T', ' ')}</td>
+                          <td className="py-2.5 font-bold">
+                            {log.type === 'supplier' && <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs">{t.typeSupplier}</span>}
+                            {log.type === 'transfer' && <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded text-xs">{t.typeTransfer}</span>}
+                            {log.type === 'dead' && <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded text-xs">{t.typeDead}</span>}
+                            {log.type === 'lost' && <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded text-xs">{t.typeLost}</span>}
+                            {log.type === 'catch' && <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-xs">{t.typeCatch}</span>}
+                          </td>
+                          <td className="py-2.5 text-slate-700">{log.remark}</td>
+                          <td className="py-2.5 text-right font-black">
+                            {log.type === 'supplier' && <span className="text-blue-600">+{formatWeight(log.weight)} g</span>}
+                            {log.type === 'transfer' && <span className="text-amber-600">{formatWeight(log.weight)} g</span>}
+                            {log.type === 'dead' && <span className="text-red-600">-{formatWeight(log.weight)} g</span>}
+                            {log.type === 'lost' && <span className="text-purple-600">-{formatWeight(log.weight)} g</span>}
+                            {log.type === 'catch' && <span className="text-emerald-600">-{formatWeight(log.weight)} g</span>}
+                          </td>
+                          {isOwner && (
+                            <td className="py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => requireOwnerPermission(() => setEditingLog(log))} className="text-slate-400 hover:text-blue-600 p-1">
+                                  <i className="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <button onClick={() => deleteLog(log.id)} className="text-slate-300 hover:text-red-600 p-1">
+                                  <i className="fa-solid fa-trash"></i>
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+            )}
+
+            {activeTab === 'reports' && isOwner && (
+              <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
+                <div className="border-b pb-4 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-bold text-lg text-slate-800">{t.reportsTitle}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{t.showingText}: <strong>{currentSummary.dateTag}</strong></p>
+                  </div>
+                  <span className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg font-bold">
+                    {filterMode === 'daily' ? t.dayData : filterMode === 'monthly' ? t.monthData : t.rangeData}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                    <span className="text-xs text-emerald-800 font-bold block">{t.totalRevenue}</span>
+                    <strong className="text-2xl text-emerald-600 mt-1 block">RM {currentSummary.revenue.toFixed(2)}</strong>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Yuran RM {currentSummary.fishing.toFixed(2)} + F&B RM {currentSummary.fb.toFixed(2)} + Umpan RM {currentSummary.bait.toFixed(2)}</span>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+                    <span className="text-xs text-blue-800 font-bold block">{t.totalSupplierIn}</span>
+                    <strong className="text-2xl text-blue-600 mt-1 block">+{formatWeight(currentSummary.supplierIn)} g</strong>
+                  </div>
+
+                  <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                    <span className="text-xs text-amber-800 font-bold block">{t.totalCatch}</span>
+                    <strong className="text-2xl text-amber-600 mt-1 block">-{formatWeight(currentSummary.catchWeight)} g</strong>
+                  </div>
+
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl">
+                    <span className="text-xs text-red-800 font-bold block">{t.totalLoss}</span>
+                    <strong className="text-2xl text-red-600 mt-1 block">-{formatWeight(currentSummary.deadLoss + currentSummary.lostCount)} g</strong>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  <div className="p-5 border rounded-2xl bg-slate-50 space-y-3">
+                    <h4 className="font-bold text-sm text-slate-700">{t.lossBreakdown} ({currentSummary.dateTag})</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border">
+                        <span className="text-slate-600 font-medium">{t.deadPrawn}:</span>
+                        <strong className="text-red-600 text-sm">-{formatWeight(currentSummary.deadLoss)} g</strong>
+                      </div>
+                      <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border">
+                        <span className="text-slate-600 font-medium">{t.lostRecord}:</span>
+                        <strong className="text-purple-600 text-sm">-{formatWeight(currentSummary.lostCount)} g</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-5 border rounded-2xl bg-slate-50 space-y-3">
+                    <h4 className="font-bold text-sm text-slate-700">{t.customerStats} ({currentSummary.dateTag})</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border">
+                        <span className="text-slate-600 font-medium">{t.customerSessions}:</span>
+                        <strong className="text-slate-800 text-sm">{currentSummary.customerCount}</strong>
+                      </div>
+                      <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border">
+                        <span className="text-slate-600 font-medium">{t.totalCatch}:</span>
+                        <strong className="text-amber-600 text-sm">{formatWeight(currentSummary.catchWeight)} g</strong>
+                      </div>
+                      <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border">
+                        <span className="text-slate-600 font-medium">{t.totalDiscountsGiven}:</span>
+                        <strong className="text-rose-600 text-sm">-RM {currentSummary.totalDiscount.toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* Password Modal */}
+            {authModal.open && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4 border my-auto">
+                  <h3 className="font-bold text-lg text-slate-800 border-b pb-2 flex items-center gap-2">
+                    <i className="fa-solid fa-lock text-amber-500"></i> {t.passTitle}
+                  </h3>
+                  <p className="text-xs text-slate-600">{t.passDesc}</p>
+                  <form onSubmit={handleConfirmAuth} className="space-y-3">
+                    <input type="password" required autoFocus className={`w-full p-2.5 border rounded-xl text-center font-mono text-lg font-bold tracking-widest ${authModal.error ? 'border-red-500 bg-red-50' : ''}`} placeholder="••••••" value={authModal.password} onChange={e => setAuthModal({ ...authModal, password: e.target.value, error: false })} />
+                    {authModal.error && <div className="text-xs text-red-600 font-bold text-center">{t.passError}</div>}
+                    <div className="flex gap-2 pt-2">
+                      <button type="button" onClick={() => setAuthModal({ open: false, password: '', error: false, pendingAction: null })} className="w-1/2 py-2 bg-slate-100 font-bold rounded-xl text-xs">{t.btnCancel}</button>
+                      <button type="submit" className="w-1/2 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs">OK</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Sales Modal */}
+            {editingSales && isOwner && (() => {
+              const fish = editingSales.fishingFee || 0;
+              const fb = parseFloat(editingSales.fbAmount) || 0;
+              const bait = parseFloat(editingSales.baitCost) || 0;
+              const calc = calculatePrawnOverweight(fish, editingSales.prawnWeight);
+              const subtotal = fish + fb + bait + calc.overweightFee;
+              const discAmount = parseDiscountValue(editingSales.discountVal, subtotal);
+              const previewTotal = Math.max(0, subtotal - discAmount);
+
+              return (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+                  <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4 border my-auto max-h-[90vh] overflow-y-auto">
+                    <h3 className="font-bold text-lg text-slate-800 border-b pb-2">{t.editSalesTitle}</h3>
+                    <form onSubmit={triggerSaveEditSales} className="space-y-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.custName}</label>
+                        <input type="text" required className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingSales.name} onChange={e=>setEditingSales({...editingSales, name: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.custPhone}</label>
+                        <input type="text" required className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingSales.phone} onChange={e=>setEditingSales({...editingSales, phone: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.startTime}</label>
+                        <input type="datetime-local" required className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingSales.startTime} onChange={e=>setEditingSales({...editingSales, startTime: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.fishingFee}</label>
+                        <input type="number" required className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingSales.fishingFee} onChange={e=>setEditingSales({...editingSales, fishingFee: e.target.value})} />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold text-slate-500">{t.prawnWeightCatch}</label>
+                          <span className="text-[10px] text-slate-400">Quota: {formatWeight(calc.allowedWeightGrams)}g</span>
+                        </div>
+                        <input type="number" placeholder="0" className="w-full mt-1 p-2 border rounded-lg text-xs font-bold text-amber-600" value={editingSales.prawnWeight || ''} onChange={e => setEditingSales({ ...editingSales, prawnWeight: e.target.value })} />
+                        {calc.excessGrams > 0 && (
+                          <div className="mt-1 text-xs text-red-600 font-bold bg-red-50 p-2 rounded-lg border border-red-100 flex justify-between">
+                            <span>{t.overweightLabel}: {formatWeight(calc.excessGrams)} g</span>
+                            <span>+RM {calc.overweightFee.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.deductPool}</label>
+                        <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={editingSales.deductPool || 'Kolam Besar'} onChange={e=>setEditingSales({...editingSales, deductPool: e.target.value})}>
+                          <option value="Kolam Besar">Kolam Besar</option>
+                          <option value="Kolam 1">Kolam 1</option>
+                          <option value="Kolam 2">Kolam 2</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-bold text-slate-500">{t.fbCost}</label>
+                          <input type="number" className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingSales.fbAmount} onChange={e=>setEditingSales({...editingSales, fbAmount: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-slate-500">{t.baitCost}</label>
+                          <input type="number" className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingSales.baitCost} onChange={e=>setEditingSales({...editingSales, baitCost: e.target.value})} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.discountLabel}</label>
+                        <input type="text" placeholder="e.g. 10 or 10%" className="w-full mt-1 p-2 border rounded-lg text-xs font-bold text-rose-600 bg-rose-50/50" value={editingSales.discountVal || ''} onChange={e=>setEditingSales({...editingSales, discountVal: e.target.value})} />
+                      </div>
+
+                      <div className="bg-slate-100 p-2.5 rounded-xl border flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-600">{t.calcTotalPaid}:</span>
+                        <span className="font-black text-emerald-600 text-sm">RM {previewTotal.toFixed(2)}</span>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button type="button" onClick={() => setEditingSales(null)} className="w-1/2 py-2.5 bg-slate-100 font-bold rounded-xl text-xs">{t.btnCancel}</button>
+                        <button type="submit" className="w-1/2 py-2.5 bg-emerald-500 text-slate-900 font-bold rounded-xl text-xs">{t.btnEdit}</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Edit Log Modal */}
+            {editingLog && isOwner && (
+              <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4 border my-auto max-h-[90vh] overflow-y-auto">
+                  <h3 className="font-bold text-lg text-slate-800 border-b pb-2">{t.editLogTitle}</h3>
+                  <form onSubmit={triggerSaveEditLog} className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-500">Masa (Time)</label>
+                      <input type="datetime-local" required className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingLog.time} onChange={e=>setEditingLog({...editingLog, time: e.target.value})} />
+                    </div>
+
+                    {editingLog.type === 'catch' && (
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.sourcePool}</label>
+                        <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={editingLog.sourcePool || 'Kolam Besar'} onChange={e=>setEditingLog({...editingLog, sourcePool: e.target.value})}>
+                          <option value="Kolam Besar">Kolam Besar</option>
+                          <option value="Kolam 1">Kolam 1</option>
+                          <option value="Kolam 2">Kolam 2</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-500">Berat Weight (Gram)</label>
+                      <input type="number" required className="w-full mt-1 p-2 border rounded-lg text-xs font-bold" value={editingLog.weight} onChange={e=>setEditingLog({...editingLog, weight: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500">Catatan (Remark)</label>
+                      <input type="text" className="w-full mt-1 p-2 border rounded-lg text-xs" value={editingLog.remark} onChange={e=>setEditingLog({...editingLog, remark: e.target.value})} />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button type="button" onClick={() => setEditingLog(null)} className="w-1/2 py-2.5 bg-slate-100 font-bold rounded-xl text-xs">{t.btnCancel}</button>
+                      <button type="submit" className="w-1/2 py-2.5 bg-emerald-500 text-slate-900 font-bold rounded-xl text-xs">{t.btnEdit}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Confirm Action Modal */}
+            {editConfirmModal.open && (
+              <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-[60] overflow-y-auto">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4 border text-center my-auto">
+                  <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+                    <i className="fa-solid fa-triangle-exclamation"></i>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-800">{t.confirmModalTitle}</h3>
+                    <p className="text-xs text-slate-500 mt-1.5">{t.confirmModalDesc}</p>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => setEditConfirmModal({ open: false, onConfirm: null })} 
+                      className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition"
+                    >
+                      {t.btnNoCancel}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => { if (editConfirmModal.onConfirm) editConfirmModal.onConfirm(); }} 
+                      className="w-1/2 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded-xl text-xs transition shadow-md"
+                    >
+                      {t.btnYesConfirm}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Checkout Modal */}
+            {checkoutItem && (() => {
+              const fish = checkoutItem.fishingFee || 0;
+              const fb = parseFloat(checkoutForm.fbAmount) || 0;
+              const bait = parseFloat(checkoutForm.baitCost) || 0;
+              const calc = calculatePrawnOverweight(fish, checkoutForm.prawnWeight);
+              const subtotal = fish + fb + bait + calc.overweightFee;
+              const discAmount = parseDiscountValue(checkoutForm.discountVal, subtotal);
+              const calculatedTotal = Math.max(0, subtotal - discAmount);
+
+              return (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+                  <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4 border my-auto max-h-[90vh] overflow-y-auto">
+                    <h3 className="font-bold text-lg text-slate-800 border-b pb-2">{t.checkoutTitle}</h3>
+                    <form onSubmit={handleCompleteCheckout} className="space-y-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.endTime}</label>
+                        <input type="datetime-local" className="w-full mt-1 p-2 border rounded-lg text-xs" value={checkoutForm.endTime} onChange={e=>setCheckoutForm({...checkoutForm, endTime: e.target.value})} />
+                      </div>
+                      <div>
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold text-slate-500">{t.prawnWeightCatch}</label>
+                          <span className="text-[10px] text-slate-400 font-bold">Quota: {formatWeight(calc.allowedWeightGrams)}g</span>
+                        </div>
+                        <input type="number" min="0" placeholder="0" className="w-full mt-1 p-2 border rounded-lg font-bold text-amber-600 text-base" value={checkoutForm.prawnWeight} onChange={e=>setCheckoutForm({...checkoutForm, prawnWeight: e.target.value})} />
+                        
+                        {calc.excessGrams > 0 ? (
+                          <div className="mt-2 text-xs text-red-600 font-bold bg-red-50 p-2.5 rounded-xl border border-red-100 flex justify-between items-center">
+                            <div>
+                              <span className="block text-[10px] text-red-400">Overweight (+RM0.07/g)</span>
+                              <span>{t.overweightLabel}: {formatWeight(calc.excessGrams)} g</span>
+                            </div>
+                            <span className="text-sm">+RM {calc.overweightFee.toFixed(2)}</span>
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-[10px] text-emerald-600 font-bold">{t.withinQuotaLabel} (Quota: {formatWeight(calc.allowedWeightGrams)}g)</div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.deductPool}</label>
+                        <select className="w-full mt-1 p-2 border rounded-lg text-xs bg-slate-50" value={checkoutForm.deductPool} onChange={e=>setCheckoutForm({...checkoutForm, deductPool: e.target.value})}>
+                          <option value="Kolam Besar">Kolam Besar</option>
+                          <option value="Kolam 1">Kolam 1</option>
+                          <option value="Kolam 2">Kolam 2</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-bold text-slate-500">{t.fbCost}</label>
+                          <input type="number" placeholder="RM 0" className="w-full mt-1 p-2 border rounded-lg text-xs" value={checkoutForm.fbAmount} onChange={e=>setCheckoutForm({...checkoutForm, fbAmount: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-slate-500">{t.baitCost}</label>
+                          <input type="number" placeholder="RM 0" className="w-full mt-1 p-2 border rounded-lg text-xs" value={checkoutForm.baitCost} onChange={e=>setCheckoutForm({...checkoutForm, baitCost: e.target.value})} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-500">{t.discountLabel}</label>
+                        <input type="text" placeholder="e.g. 10 or 10%" className="w-full mt-1 p-2 border rounded-lg text-xs font-bold text-rose-600 bg-rose-50/50 border-rose-200" value={checkoutForm.discountVal} onChange={e=>setCheckoutForm({...checkoutForm, discountVal: e.target.value})} />
+                      </div>
+
+                      <div className="bg-slate-100 p-3 rounded-xl border flex justify-between items-center mt-2">
+                        <div>
+                          <span className="text-xs font-bold text-slate-600 block">Total Paid:</span>
+                          {discAmount > 0 && <span className="text-[10px] text-rose-500 font-bold">Discount: -RM {discAmount.toFixed(2)}</span>}
+                        </div>
+                        <span className="text-xl font-black text-emerald-600">RM {calculatedTotal.toFixed(2)}</span>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button type="button" onClick={() => setCheckoutItem(null)} className="w-1/2 py-2.5 bg-slate-100 font-bold rounded-xl text-xs">{t.btnCancel}</button>
+                        <button type="submit" className="w-1/2 py-2.5 bg-emerald-500 text-slate-900 font-bold rounded-xl text-xs">{t.btnSaveCheckout}</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Screenshot Modal */}
+            {showReportModal && isOwner && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+                <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 border my-8">
+                  
+                  <div ref={reportRef} className="bg-white p-6 rounded-2xl border border-slate-200 text-slate-800 space-y-5">
+                    <div className="border-b border-slate-200 pb-3 flex justify-between items-end">
+                      <div>
+                        <h1 className="font-black text-xl text-emerald-600">{COMPANY_INFO.name}</h1>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{COMPANY_INFO.address}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">{currentSummary.title}</span>
+                        <p className="text-xs font-mono font-bold text-slate-600 mt-1">{currentSummary.dateTag}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{t.currentPoolStockSection}</h2>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-slate-800 text-white p-2.5 rounded-xl border">
+                          <span className="text-[10px] text-slate-300 block font-semibold">Kolam Besar</span>
+                          <strong className="text-base font-black text-emerald-400">{formatWeight(poolBalances['Kolam Besar'])} <span className="text-[10px] font-normal">g</span></strong>
+                        </div>
+                        <div className="bg-slate-800 text-white p-2.5 rounded-xl border">
+                          <span className="text-[10px] text-slate-300 block font-semibold">Kolam 1</span>
+                          <strong className="text-base font-black text-emerald-400">{formatWeight(poolBalances['Kolam 1'])} <span className="text-[10px] font-normal">g</span></strong>
+                        </div>
+                        <div className="bg-slate-800 text-white p-2.5 rounded-xl border">
+                          <span className="text-[10px] text-slate-300 block font-semibold">Kolam 2</span>
+                          <strong className="text-base font-black text-emerald-400">{formatWeight(poolBalances['Kolam 2'])} <span className="text-[10px] font-normal">g</span></strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{t.salesSummarySection}</h2>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 col-span-2 flex justify-between items-center">
+                          <span className="font-bold text-emerald-800 text-sm">{t.totalRevenue}</span>
+                          <span className="text-2xl font-black text-emerald-600">RM {currentSummary.revenue.toFixed(2)}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border text-xs">
+                          <span className="text-slate-500 block">🎣 {t.fishingFee}:</span>
+                          <strong className="text-slate-800 text-sm">RM {currentSummary.fishing.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border text-xs">
+                          <span className="text-slate-500 block">{t.fbCost}:</span>
+                          <strong className="text-slate-800 text-sm">RM {currentSummary.fb.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border text-xs">
+                          <span className="text-slate-500 block">{t.baitCost}:</span>
+                          <strong className="text-slate-800 text-sm">RM {currentSummary.bait.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border text-xs">
+                          <span className="text-slate-500 block">{t.discountLabel}:</span>
+                          <strong className="text-rose-600 text-sm">-RM {currentSummary.totalDiscount.toFixed(2)}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{t.prawnSummarySection} ({currentSummary.dateTag})</h2>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                          <span className="text-blue-600 font-bold block">🚚 {t.totalSupplierIn}</span>
+                          <span className="text-xl font-black text-blue-700 mt-0.5 block">+{formatWeight(currentSummary.supplierIn)} <span className="text-xs font-normal">g</span></span>
+                        </div>
+                        <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
+                          <span className="text-amber-700 font-bold block">🎣 {t.totalCatch}</span>
+                          <span className="text-xl font-black text-amber-600 mt-0.5 block">-{formatWeight(currentSummary.catchWeight)} <span className="text-xs font-normal">g</span></span>
+                        </div>
+                        <div className="bg-red-50 p-3 rounded-xl border border-red-100">
+                          <span className="text-red-600 font-bold block">{t.deadPrawn}</span>
+                          <span className="text-xl font-black text-red-600 mt-0.5 block">-{formatWeight(currentSummary.deadLoss)} <span className="text-xs font-normal">g</span></span>
+                        </div>
+                        <div className="bg-purple-50 p-3 rounded-xl border border-purple-100">
+                          <span className="text-purple-600 font-bold block">{t.lostRecord}</span>
+                          <span className="text-xl font-black text-purple-600 mt-0.5 block">-{formatWeight(currentSummary.lostCount)} <span className="text-xs font-normal">g</span></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-2 text-[10px] text-slate-400 text-center">
+                      {t.generatedTag}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setShowReportModal(false)} className="w-1/3 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition text-xs" disabled={isCapturing}>
+                      {t.btnCancel}
+                    </button>
+                    <button onClick={handleSaveAndExit} className="w-2/3 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-xs flex items-center justify-center gap-2 shadow-lg" disabled={isCapturing}>
+                      <i className="fa-solid fa-floppy-disk"></i> {isCapturing ? t.saving : t.btnSaveExit}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
